@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
+
+from anthropic import Anthropic
 from openai import OpenAI
 
 
@@ -27,6 +29,8 @@ class Model(ABC):
             ) -> ModelResponse:
         raise NotImplementedError
 
+
+"""OpenAI"""
 class OpenAIModel(Model):
 
     def __init__(
@@ -64,4 +68,25 @@ class OpenAIModel(Model):
             text=response.output_text,
             tool_calls=tool_calls,
             raw=response
+        )
+
+
+"""Anthropic"""
+
+
+class AnthropicModel(Model):
+
+    def __init__(
+            self,
+            model: str,
+            client: Anthropic | None = None
+    ):
+        self.model = model
+        self.client = client or Anthropic()
+
+    def generate(self, instruction: str | None, input: list, tools: list[dict] | None = None) -> ModelResponse:
+        response = self.client.messages.create(
+            model=self.model,
+            messages=input,
+            tools=tools
         )

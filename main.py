@@ -1,9 +1,12 @@
+import asyncio
+
 from model import OpenAIModel
 from runtime import Runtime
 
-if __name__ == '__main__':
+
+async def main():
     runtime = Runtime(
-        OpenAIModel(model="qwen3.8-flash"),
+        OpenAIModel(model="deepseek-flash"),
     )
     msg = list()
     while True:
@@ -15,8 +18,8 @@ if __name__ == '__main__':
         msg.append(
             {"role": "user", "content": user_input}
         )
-        resp = runtime.run(
-            instructions="你是GD-code，一个编程助手",
+        resp = await runtime.run(
+            instructions="你是Mini，一个AI智能体",
             input=msg
         )
         msg.append(
@@ -24,3 +27,7 @@ if __name__ == '__main__':
         )
         print(resp.text)
         print()
+
+
+if __name__ == '__main__':
+    asyncio.run(main())
