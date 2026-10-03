@@ -15,16 +15,16 @@ class UnknownToolError(Exception):
 
 
 @dataclass
-class ToolSpec:
+class ToolDef:
     name: str
+    description: str
     func: Callable[..., Any]
+    input_schema: dict[str, Any]
     args_model: type[BaseModel] | None
-
 
 class ToolRegistry:
     def __init__(self, default_timeout: float | None | object = _UNSET) -> None:
-        self._spec: dict[str, ToolSpec] = {}
-        self._schemas: dict[str, dict[str, Any]] = {}
+        self._spec: dict[str, ToolDef] = {}
         if default_timeout is _UNSET:
             self.default_timeout = 30.0
         else:
@@ -46,19 +46,13 @@ class ToolRegistry:
                     prop.pop("title", None)
             else:
                 schema = {"type": "object", "properties": {}}
-            self._spec[name] = ToolSpec(name=name, func=func, args_model=args_model)
-            self._schemas[name] = {
-                "type": "function",
-                "name": name,
-                "description": description,
-                "parameters": schema
-            }
+            self._spec[name] = ToolDef(name=name, description=description, func=func, input_schema=schema,
+                                       args_model=args_model)
             return func
-
         return decoration
 
     def tools_schema(self) -> list[dict[str, Any]]:
-        return list(self._schemas.values())
+        return list(self._spec.values())
 
     async def invoke(self, name: str, arguments: dict[str, Any]) -> Any:
         spec = self._spec.get(name)
@@ -89,6 +83,3 @@ def tool(
     """给工具模块用的装饰器入口"""
     return registry.register(name=name, description=description, args_model=args_model)
 
-
-def bind_tool_schema() -> list[dict[str, Any]]:
-    return registry.tools_schema()
