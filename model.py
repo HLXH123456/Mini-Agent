@@ -1,3 +1,4 @@
+import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
@@ -5,12 +6,21 @@ from typing import Any
 from anthropic import Anthropic
 from openai import OpenAI
 
+from tools import ToolDef
+
 
 @dataclass
 class ToolCall:
     id: str
     name: str
     argument: str
+
+
+@dataclass(frozen=True)
+class ToolResult:
+    call_id: str
+    output: str
+    is_error: bool = False
 
 @dataclass
 class ModelResponse:
@@ -27,6 +37,14 @@ class Model(ABC):
             input: list,
             tools: list[dict] | None = None,
             ) -> ModelResponse:
+        raise NotImplementedError
+
+    @abstractmethod
+    def tools_payload(self, defs: list[ToolDef]) -> list[dict] | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def tool_result(self, response: ModelResponse, outputs: list[ToolResult]) -> list[dict]:
         raise NotImplementedError
 
 
@@ -70,10 +88,27 @@ class OpenAIModel(Model):
             raw=response
         )
 
+    def tools_payload(self, defs: list[ToolDef]) -> list[dict] | None:
+        if not defs:
+            return None
+        return [
+            {"type": "function", "name": d.name, "description": d.description,
+             "parameters": d.input_schema}
+            for d in defs
+        ]
+
+    def tool_result(self, response: ModelResponse, outputs: list[ToolResult]) -> list[dict]:
+        return list(response.raw.output) + [
+            {
+                "type": "function_call_output",
+                "call_id": output.call_id,
+                "output": output.output
+            }
+            for output in outputs
+        ]
+
 
 """Anthropic"""
-
-
 class AnthropicModel(Model):
 
     def __init__(
@@ -88,5 +123,47 @@ class AnthropicModel(Model):
         response = self.client.messages.create(
             model=self.model,
             messages=input,
-            tools=tools
+            system=instruction,
+            tools=tools,
+            max_tokens=4096
         )
+        tool_calls = []
+        text = None
+        for item in response.content:
+            if item.type == "tool_use":
+                tool_calls.append(
+                    ToolCall(
+                        id=item.id,
+                        name=item.name,
+                        argument=json.dumps(item.input, ensure_ascii=False)
+                    )
+                )
+            if item.type == "text":
+                text = item.text
+        return ModelResponse(
+            text=text or "",
+            tool_calls=tool_calls,
+            raw=response
+        )
+
+    def tools_payload(self, defs: list[ToolDef]) -> list[dict] | None:
+        if not defs:
+            return None
+        return [
+            {"name": d.name, "description": d.description, "input_schema": d.input_schema}
+            for d in defs
+        ]
+
+    def tool_result(self, response: ModelResponse, outputs: list[ToolResult]) -> list[dict]:
+        return [
+            {"role": "assistant", "content": response.raw.content},
+            {"role": "user", "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": output.call_id,
+                    "content": output.output,
+                    "is_error": output.is_error
+                }
+                for output in outputs
+            ]}
+        ]
