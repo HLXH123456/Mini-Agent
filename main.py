@@ -18,10 +18,7 @@ async def main():
         msg.append(
             {"role": "user", "content": user_input}
         )
-        resp = await runtime.run(
-            instructions="你是Mini，一个AI智能体",
-            input=msg
-        )
+        resp = await runtime.run(input=msg)
         msg.append(
             {"role": "assistant", "content": resp.text}
         )
